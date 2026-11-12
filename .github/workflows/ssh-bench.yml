@@ -1,13 +1,12 @@
 name: ssh-bench (manual only)
 
 # Fork-local interactive debugging/benchmark session. Manual dispatch ONLY.
-# v4: tmate public relay (ssh.tmate.io) was shut down 2025-07 (tmate-io/tmate#322,
-# tmate-io/tmate#336, mxschmitt/action-tmate#255) — every tmate-based approach
-# fails at handshake. Replacement: runner-side sshd (key-locked, port 2222) +
-# two independent public TCP reverse tunnels (bore.pub + pinggy free). Addresses
-# are published as a release asset (bench_info_*.txt) so we never depend on
-# reading runner logs while the job runs (mxschmitt/action-tmate#164 lesson).
-# Job holds until /continue (created from inside the SSH session) or ~6h.
+# v6: diagnostic-hardened. tmate relay is dead (ssh.tmate.io shut down 2025-07,
+# tmate-io/tmate#322/#336), so we run key-locked sshd on 2222 + reverse tunnels
+# (bore.pub + pinggy). Everything diagnostic is published as a release asset so
+# we never depend on reading runner logs while the job runs. No step may die
+# before the upload (no bare printf with a leading '-' format; every diagnostic
+# command gets `|| true`).
 
 on:
   workflow_dispatch: {}
@@ -55,44 +54,53 @@ jobs:
           StrictModes yes
           EOF
           sudo chmod g-w /home/runner
-          sudo /usr/sbin/sshd -f /tmp/sshd_config -E /tmp/sshd.log
+          sudo /usr/sbin/sshd -f /tmp/sshd_config -E /tmp/sshd.log || true
           ss -tln | grep 2222 || true
 
-          # ---- 回环自测：临时密钥验证 sshd 认证链路 ----
-          ssh-keygen -t ed25519 -N '' -f /tmp/selftest_key -q
-          cat /tmp/selftest_key.pub >> ~/.ssh/authorized_keys
-          if ssh -i /tmp/selftest_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 2222 runner@localhost true 2>/dev/null; then
-            printf 'selftest=PASS\n'
-          else
-            printf 'selftest=FAIL\n'
-            tail -20 /tmp/sshd.log || true
+          # ---- 回环自测（失败不终止步骤） ----
+          st=FAIL
+          if ssh-keygen -t ed25519 -N '' -f /tmp/selftest_key -q \
+             && cat /tmp/selftest_key.pub >> ~/.ssh/authorized_keys \
+             && ssh -i /tmp/selftest_key -o StrictHostKeyChecking=no \
+                    -o UserKnownHostsFile=/dev/null -p 2222 runner@localhost true 2>/dev/null; then
+            st=PASS
           fi
           rm -f /tmp/selftest_key /tmp/selftest_key.pub
-          grep -v -F "$(printf '%s\n' "$BENCH_PUBKEY")" ~/.ssh/authorized_keys > /tmp/ak && printf '%s\n' "$BENCH_PUBKEY" > ~/.ssh/authorized_keys
+          printf '%s\n' "$BENCH_PUBKEY" > ~/.ssh/authorized_keys
           chmod 600 ~/.ssh/authorized_keys
 
           # ---- bore.pub 隧道 ----
-          curl -sfL -o /tmp/bore.tgz https://github.com/ekzhang/bore/releases/download/v0.5.0/bore-v0.5.0-x86_64-unknown-linux-musl.tar.gz \
-            && tar -xzf /tmp/bore.tgz -C /tmp && chmod +x /tmp/bore \
-            || printf 'bore download failed\n'
-          if [ -x /tmp/bore ]; then
+          baddr=none
+          if curl -sfL -o /tmp/bore.tgz https://github.com/ekzhang/bore/releases/download/v0.5.0/bore-v0.5.0-x86_64-unknown-linux-musl.tar.gz; then
+            tar -xzf /tmp/bore.tgz -C /tmp && chmod +x /tmp/bore || true
             nohup /tmp/bore local 2222 --to bore.pub > /tmp/bore.log 2>&1 &
             sleep 4
+            baddr=$(grep -o 'bore.pub:[0-9]*' /tmp/bore.log | head -1 || printf none)
           fi
 
-          # ---- pinggy 免费隧道（走 443 出口） ----
+          # ---- pinggy 免费隧道（443 出口） ----
+          paddr=none
           nohup ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=30 \
             -p 443 -R0:localhost:2222 free.pinggy.io > /tmp/pinggy.log 2>&1 &
           sleep 12
+          paddr=$(grep -oE 'tcp://[a-zA-Z0-9.]+:[0-9]+' /tmp/pinggy.log | head -1 || printf none)
 
-          # ---- 发布地址到 release 资产 ----
+          # ---- 发布到 release 资产（诊断与地址一体） ----
           {
             printf 'utc=%s\n' "$(date -u +%FT%TZ)"
-            printf 'bore=%s\n' "$(grep -o 'bore.pub:[0-9]*' /tmp/bore.log 2>/dev/null | head -1)"
-            printf 'pinggy=%s\n' "$(grep -oE 'tcp://[a-zA-Z0-9.]+:[0-9]+' /tmp/pinggy.log 2>/dev/null | head -1)"
+            printf 'selftest=%s\n' "$st"
+            printf 'bore=%s\n' "$baddr"
+            printf 'pinggy=%s\n' "$paddr"
             printf 'user=runner\n'
-            printf '--- sshd.log tail ---\n'; tail -15 /tmp/sshd.log 2>/dev/null || true
-            printf '--- pinggy.log tail ---\n'; tail -8 /tmp/pinggy.log 2>/dev/null || true
+            printf '%s\n' '=== ssh dir ==='
+            ls -la ~/.ssh 2>&1 || true
+            head -c 100 ~/.ssh/authorized_keys 2>&1 || true
+            printf '\n%s\n' '=== sshd effective config ==='
+            sudo /usr/sbin/sshd -T -f /tmp/sshd_config 2>&1 | grep -iE 'authorizedkeysfile|pubkeyauth|strictmodes|allowusers|passwordauth|kbdinteractive' || true
+            printf '%s\n' '=== sshd.log ==='
+            sudo tail -40 /tmp/sshd.log 2>&1 || true
+            printf '%s\n' '=== pinggy.log tail ==='
+            tail -8 /tmp/pinggy.log 2>&1 || true
           } > bench_info.txt
           cat bench_info.txt
           ts=$(date +%s)
