@@ -1,16 +1,21 @@
 name: ssh-bench (manual only)
 
 # Fork-local interactive debugging/benchmark session.
-# Manual dispatch ONLY — consistent with fork policy (all workflows manual).
-# v2: detached tmate setup (its log flushes immediately, so the SSH string is
-# readable while the job runs) + a hold step that keeps the job alive until
-# `sudo touch /continue` (from inside the SSH session) or ~6h elapse.
+# Manual dispatch ONLY — consistent with fork policy.
+# v3: mxschmitt/action-tmate hides its step output while running (mxschmitt/action-tmate#164),
+# so we roll tmate by hand in plain steps (output streams normally) and publish the
+# SSH string as a release asset the moment the session is up — no log-scraping needed.
+# Session is key-locked (tmate-authorized-keys). Job holds until /continue or ~6h.
 
 on:
   workflow_dispatch: {}
 
 permissions:
-  contents: read
+  contents: write
+
+env:
+  RELEASE_ID: '443436768' # bench-payload release
+  BENCH_PUBKEY: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOI/nJInsDdHaWRiqbMZqZOVyXallUpjryRVvda4YDQM hkyear-gh-actions-bench'
 
 jobs:
   bench:
@@ -23,15 +28,43 @@ jobs:
           printf 'nproc=%s\n' "$(nproc)"
           printf 'mem: '; free -h | awk 'NR==2{print $2" total / "$7" avail"}'
 
-      - name: tmate session (detached setup, prints SSH string)
-        uses: mxschmitt/action-tmate@v3
-        with:
-          detached: true
-          limit-access-to-actor: true
+      - name: tmate session (hand-rolled, key-locked)
+        run: |
+          set -e
+          mkdir -p ~/.ssh
+          printf '%s\n' "$BENCH_PUBKEY" > ~/.ssh/tmate_authorized_keys
+          printf 'set -g tmate-authorized-keys "%s"\n' "$HOME/.ssh/tmate_authorized_keys" > ~/.tmate.conf
+          timeout 120 sudo apt-get update -qq
+          timeout 180 sudo apt-get install -y -qq tmate
+          tmate -S /tmp/tmate.sock new-session -d
+          s=''
+          for i in $(seq 1 45); do
+            s=$(tmate -S /tmp/tmate.sock display -p '#{tmate_ssh}' 2>/dev/null || true)
+            [ -n "$s" ] && break
+            sleep 2
+          done
+          if [ -z "$s" ]; then
+            printf 'tmate failed to establish session\n'
+            exit 1
+          fi
+          {
+            printf 'utc=%s\n' "$(date -u +%FT%TZ)"
+            printf 'tmate_ssh=%s\n' "$s"
+            printf 'ro=%s\n' "$(tmate -S /tmp/tmate.sock display -p '#{tmate_ssh_ro}' 2>/dev/null || true)"
+          } > bench_info.txt
+          ts=$(date +%s)
+          curl -sf -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Content-Type: text/plain" \
+            --data-binary @bench_info.txt \
+            "https://uploads.github.com/repos/hkyear/wordcraft/releases/$RELEASE_ID/assets?name=bench_info_$ts.txt" \
+            && printf 'published bench_info_%s.txt\n' "$ts"
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       - name: Hold session open (until /continue or 6h)
         run: |
-          printf 'SSH session is live. Create /continue (sudo touch /continue) to release.\n'
+          printf 'SSH session is live. From inside: sudo touch /continue to release.\n'
           i=0
           until [ -f /continue ] || [ "$i" -ge 4320 ]; do
             sleep 5
