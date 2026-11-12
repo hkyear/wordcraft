@@ -1,0 +1,28 @@
+name: ssh-bench (manual only)
+
+# Fork-local interactive debugging/benchmark session.
+# Manual dispatch ONLY — consistent with fork policy (all workflows manual).
+# The tmate step blocks until `sudo touch /continue` (from inside the SSH
+# session) or the 6h job timeout, whichever comes first.
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: CPU info
+        run: |
+          lscpu | grep -E 'Model name|MHz|Core|Socket|Thread|NUMA node' || true
+          printf 'nproc=%s\n' "$(nproc)"
+          printf 'mem: '; free -h | awk 'NR==2{print $2" total / "$7" avail"}'
+
+      - name: tmate session (blocks until /continue or timeout)
+        uses: mxschmitt/action-tmate@v3
+        with:
+          limit-access-to-actor: true
