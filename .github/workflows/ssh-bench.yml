@@ -40,6 +40,7 @@ jobs:
           mkdir -p /tmp/bench_ssh
           ssh-keygen -t ed25519 -N '' -f /tmp/bench_ssh/host_ed25519 -q
           sudo mkdir -p /run/sshd
+          sudo usermod -p '*' runner   # runner account is locked in the image; sshd (UsePAM no) refuses locked accounts
           cat > /tmp/sshd_config <<'EOF'
           Port 2222
           HostKey /tmp/bench_ssh/host_ed25519
