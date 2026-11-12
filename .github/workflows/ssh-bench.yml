@@ -1,11 +1,13 @@
 name: ssh-bench (manual only)
 
-# Fork-local interactive debugging/benchmark session.
-# Manual dispatch ONLY — consistent with fork policy.
-# v3: mxschmitt/action-tmate hides its step output while running (mxschmitt/action-tmate#164),
-# so we roll tmate by hand in plain steps (output streams normally) and publish the
-# SSH string as a release asset the moment the session is up — no log-scraping needed.
-# Session is key-locked (tmate-authorized-keys). Job holds until /continue or ~6h.
+# Fork-local interactive debugging/benchmark session. Manual dispatch ONLY.
+# v4: tmate public relay (ssh.tmate.io) was shut down 2025-07 (tmate-io/tmate#322,
+# tmate-io/tmate#336, mxschmitt/action-tmate#255) — every tmate-based approach
+# fails at handshake. Replacement: runner-side sshd (key-locked, port 2222) +
+# two independent public TCP reverse tunnels (bore.pub + pinggy free). Addresses
+# are published as a release asset (bench_info_*.txt) so we never depend on
+# reading runner logs while the job runs (mxschmitt/action-tmate#164 lesson).
+# Job holds until /continue (created from inside the SSH session) or ~6h.
 
 on:
   workflow_dispatch: {}
@@ -14,7 +16,7 @@ permissions:
   contents: write
 
 env:
-  RELEASE_ID: '443436768' # bench-payload release
+  RELEASE_ID: '443436768'
   BENCH_PUBKEY: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOI/nJInsDdHaWRiqbMZqZOVyXallUpjryRVvda4YDQM hkyear-gh-actions-bench'
 
 jobs:
@@ -28,30 +30,54 @@ jobs:
           printf 'nproc=%s\n' "$(nproc)"
           printf 'mem: '; free -h | awk 'NR==2{print $2" total / "$7" avail"}'
 
-      - name: tmate session (hand-rolled, key-locked)
+      - name: sshd + reverse tunnels (bore + pinggy)
         run: |
           set -e
+          # ---- sshd，锁到账号公钥 ----
           mkdir -p ~/.ssh
-          printf '%s\n' "$BENCH_PUBKEY" > ~/.ssh/tmate_authorized_keys
-          printf 'set -g tmate-authorized-keys "%s"\n' "$HOME/.ssh/tmate_authorized_keys" > ~/.tmate.conf
-          timeout 120 sudo apt-get update -qq
-          timeout 180 sudo apt-get install -y -qq tmate
-          tmate -S /tmp/tmate.sock new-session -d
-          s=''
-          for i in $(seq 1 45); do
-            s=$(tmate -S /tmp/tmate.sock display -p '#{tmate_ssh}' 2>/dev/null || true)
-            [ -n "$s" ] && break
-            sleep 2
-          done
-          if [ -z "$s" ]; then
-            printf 'tmate failed to establish session\n'
-            exit 1
+          printf '%s\n' "$BENCH_PUBKEY" > ~/.ssh/authorized_keys
+          chmod 700 ~/.ssh
+          chmod 600 ~/.ssh/authorized_keys
+          mkdir -p /tmp/bench_ssh
+          ssh-keygen -t ed25519 -N '' -f /tmp/bench_ssh/host_ed25519 -q
+          sudo mkdir -p /run/sshd
+          cat > /tmp/sshd_config <<'EOF'
+          Port 2222
+          HostKey /tmp/bench_ssh/host_ed25519
+          PubkeyAuthentication yes
+          AuthorizedKeysFile /home/runner/.ssh/authorized_keys
+          PasswordAuthentication no
+          KbdInteractiveAuthentication no
+          UsePAM no
+          AllowUsers runner
+          PidFile /tmp/sshd_bench.pid
+          LogLevel ERROR
+          EOF
+          sudo /usr/sbin/sshd -f /tmp/sshd_config
+          ss -tln | grep 2222 || true
+
+          # ---- bore.pub 隧道 ----
+          curl -sfL -o /tmp/bore.tgz https://github.com/ekzhang/bore/releases/download/v0.5.0/bore-v0.5.0-x86_64-unknown-linux-musl.tar.gz \
+            && tar -xzf /tmp/bore.tgz -C /tmp && chmod +x /tmp/bore \
+            || printf 'bore download failed\n'
+          if [ -x /tmp/bore ]; then
+            nohup /tmp/bore local 2222 --to bore.pub > /tmp/bore.log 2>&1 &
+            sleep 4
           fi
+
+          # ---- pinggy 免费隧道（走 443 出口） ----
+          nohup ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=30 \
+            -p 443 -R0:localhost:2222 free.pinggy.io > /tmp/pinggy.log 2>&1 &
+          sleep 12
+
+          # ---- 发布地址到 release 资产 ----
           {
             printf 'utc=%s\n' "$(date -u +%FT%TZ)"
-            printf 'tmate_ssh=%s\n' "$s"
-            printf 'ro=%s\n' "$(tmate -S /tmp/tmate.sock display -p '#{tmate_ssh_ro}' 2>/dev/null || true)"
+            printf 'bore=%s\n' "$(grep -o 'bore.pub:[0-9]*' /tmp/bore.log 2>/dev/null | head -1)"
+            printf 'pinggy=%s\n' "$(grep -oE 'tcp://[a-zA-Z0-9.]+:[0-9]+' /tmp/pinggy.log 2>/dev/null | head -1)"
+            printf 'user=runner\n'
           } > bench_info.txt
+          cat bench_info.txt
           ts=$(date +%s)
           curl -sf -X POST \
             -H "Authorization: Bearer $GH_TOKEN" \
@@ -64,7 +90,7 @@ jobs:
 
       - name: Hold session open (until /continue or 6h)
         run: |
-          printf 'SSH session is live. From inside: sudo touch /continue to release.\n'
+          printf 'SSH ready. From inside the session: sudo touch /continue to release the runner.\n'
           i=0
           until [ -f /continue ] || [ "$i" -ge 4320 ]; do
             sleep 5
