@@ -51,10 +51,25 @@ jobs:
           UsePAM no
           AllowUsers runner
           PidFile /tmp/sshd_bench.pid
-          LogLevel ERROR
+          LogLevel VERBOSE
+          StrictModes yes
           EOF
-          sudo /usr/sbin/sshd -f /tmp/sshd_config
+          sudo chmod g-w /home/runner
+          sudo /usr/sbin/sshd -f /tmp/sshd_config -E /tmp/sshd.log
           ss -tln | grep 2222 || true
+
+          # ---- 回环自测：临时密钥验证 sshd 认证链路 ----
+          ssh-keygen -t ed25519 -N '' -f /tmp/selftest_key -q
+          cat /tmp/selftest_key.pub >> ~/.ssh/authorized_keys
+          if ssh -i /tmp/selftest_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 2222 runner@localhost true 2>/dev/null; then
+            printf 'selftest=PASS\n'
+          else
+            printf 'selftest=FAIL\n'
+            tail -20 /tmp/sshd.log || true
+          fi
+          rm -f /tmp/selftest_key /tmp/selftest_key.pub
+          grep -v -F "$(printf '%s\n' "$BENCH_PUBKEY")" ~/.ssh/authorized_keys > /tmp/ak && printf '%s\n' "$BENCH_PUBKEY" > ~/.ssh/authorized_keys
+          chmod 600 ~/.ssh/authorized_keys
 
           # ---- bore.pub 隧道 ----
           curl -sfL -o /tmp/bore.tgz https://github.com/ekzhang/bore/releases/download/v0.5.0/bore-v0.5.0-x86_64-unknown-linux-musl.tar.gz \
@@ -76,6 +91,8 @@ jobs:
             printf 'bore=%s\n' "$(grep -o 'bore.pub:[0-9]*' /tmp/bore.log 2>/dev/null | head -1)"
             printf 'pinggy=%s\n' "$(grep -oE 'tcp://[a-zA-Z0-9.]+:[0-9]+' /tmp/pinggy.log 2>/dev/null | head -1)"
             printf 'user=runner\n'
+            printf '--- sshd.log tail ---\n'; tail -15 /tmp/sshd.log 2>/dev/null || true
+            printf '--- pinggy.log tail ---\n'; tail -8 /tmp/pinggy.log 2>/dev/null || true
           } > bench_info.txt
           cat bench_info.txt
           ts=$(date +%s)
