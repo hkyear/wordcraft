@@ -2,8 +2,9 @@ name: ssh-bench (manual only)
 
 # Fork-local interactive debugging/benchmark session.
 # Manual dispatch ONLY — consistent with fork policy (all workflows manual).
-# The tmate step blocks until `sudo touch /continue` (from inside the SSH
-# session) or the 6h job timeout, whichever comes first.
+# v2: detached tmate setup (its log flushes immediately, so the SSH string is
+# readable while the job runs) + a hold step that keeps the job alive until
+# `sudo touch /continue` (from inside the SSH session) or ~6h elapse.
 
 on:
   workflow_dispatch: {}
@@ -22,7 +23,18 @@ jobs:
           printf 'nproc=%s\n' "$(nproc)"
           printf 'mem: '; free -h | awk 'NR==2{print $2" total / "$7" avail"}'
 
-      - name: tmate session (blocks until /continue or timeout)
+      - name: tmate session (detached setup, prints SSH string)
         uses: mxschmitt/action-tmate@v3
         with:
+          detached: true
           limit-access-to-actor: true
+
+      - name: Hold session open (until /continue or 6h)
+        run: |
+          printf 'SSH session is live. Create /continue (sudo touch /continue) to release.\n'
+          i=0
+          until [ -f /continue ] || [ "$i" -ge 4320 ]; do
+            sleep 5
+            i=$((i+1))
+          done
+          printf 'Releasing runner.\n'
