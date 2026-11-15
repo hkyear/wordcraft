@@ -10,6 +10,15 @@ description = "WordCraft desktop app"
 [lints]
 workspace = true
 
+[features]
+default = ["wgpu", "accessibility"]
+wgpu = ["eframe/wgpu"]
+accessibility = ["eframe/accesskit"]
+# The experimental, unsupported Windows 7 build (docs/windows7.md): OpenGL instead of wgpu, no
+# AccessKit adapter. Build with --no-default-features --features windows7 and the win7 Rust target
+# (packaging/windows/windows7.ps1).
+windows7 = ["eframe/glow"]
+
 [dependencies]
 wordcraft-doc = { workspace = true }
 wordcraft-engine = { workspace = true }
@@ -19,7 +28,8 @@ wordcraft-fonts = { workspace = true }
 wordcraft-ui-egui = { workspace = true }
 # The control key file's location (shared with the MCP bridge).
 wordcraft-control-key = { workspace = true }
-eframe = { workspace = true, features = ["default_fonts", "wgpu", "accesskit", "clipboard", "wayland", "x11", "links"] }
+# wgpu and the AccessKit adapter come with the default `wgpu` and `accessibility` features.
+eframe = { workspace = true, features = ["default_fonts", "clipboard", "wayland", "x11", "links"] }
 egui = { workspace = true }
 serde_json = { workspace = true }
 serde = { workspace = true }
@@ -71,7 +81,14 @@ x11-dl = "2.21"
 xkbcommon-dl = { version = "0.4.2", features = ["x11"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
+# The clipboard's "Rich Text Format" and the names of its formats (#687, #833), which arboard
+# doesn't read. Already in the build through arboard, at this version.
+clipboard-win = { version = "5.4", features = ["std"] }
+
+# Not on the Windows 7 build (docs/windows7.md), which has no Windows Runtime or Settings app.
+[target.'cfg(all(windows, not(target_vendor = "win7")))'.dependencies]
 # The upstream default-apps button opens Windows Settings; printing uses craft-print instead.
+# Windows 7 opens Control Panel's Default Programs instead (src/default_apps.rs).
 open = "5"
 # The system's Animation effects setting (Settings › Accessibility › Visual effects), read through
 # the Windows Runtime's UISettings: a safe API, where the Win32 call needs unsafe, which our
@@ -79,14 +96,15 @@ open = "5"
 # only the `UI_ViewManagement` bindings, and `System_UserProfile` for the home region new
 # documents take their paper and units from (#838).
 windows = { version = "0.62", features = ["UI_ViewManagement", "System_UserProfile"] }
-# The clipboard's "Rich Text Format" and the names of its formats (#687, #833), which arboard
-# doesn't read. Already in the build through arboard, at this version.
-clipboard-win = { version = "5.4", features = ["std"] }
 
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# craft-print draws Windows jobs with Windows.Data.Pdf, a Windows Runtime API: the win7 target
+# prints through the PDF viewer instead (src/print/windows7.rs).
+[target.'cfg(all(not(target_arch = "wasm32"), not(target_vendor = "win7")))'.dependencies]
 # Pinned apart from craft-ui, which doesn't depend on it: `printer_queues`, the printer list that
 # asks no driver (#5710, storytold/craft-libs#618), and `submit_cancellable` (storytold/craft-libs#622).
 craft-print = { git = "https://github.com/storytold/craft-libs", rev = "a3e0b5a9440d18f19422a9dca13516747b7d3181" }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rfd = { workspace = true }
 # Waits for an `rfd::AsyncFileDialog` on a background thread (the dialogs don't block the UI, #94);
 # rfd itself already depends on it.

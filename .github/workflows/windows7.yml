@@ -1,0 +1,68 @@
+# Experimental, unsupported Windows 7 SP1 x64 build (docs/windows7.md), ported from
+# VectorCraft's. Fork-local policy: manual dispatch only.
+# Fork-local changes vs fragtion's version:
+#  - zh-hans-only interface: craft-i18n is checked out at the pinned rev and pruned to
+#    locales/zh-hans, then fed to the build via CRAFT_I18N_DIR (crates/ui-egui/build.rs
+#    embeds one catalog pair per locale directory; English defaults live in code).
+#  - no fonts are embedded (CRAFT_FONTS_DIR is unset) and assets/fonts is emptied
+#    (crates/fonts/src/fontdb/face.rs), so the UI and documents render with the fonts
+#    installed on the target machine.
+#  - the build produces only wordcraft.exe (no CLI, no ZIP packaging).
+# A modern Windows runner proves compilation and host smoke tests only: run the checklist
+# in docs/windows7.md on actual Windows 7 before claiming support.
+name: Windows 7 x64 compatibility
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: windows7-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+        with:
+          arch: x64
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
+        with:
+          toolchain: nightly-2026-10-01
+          components: rust-src
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: windows7-x64
+      - name: Check out craft-i18n (pinned rev) for the zh-hans interface
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: storytold/craft-i18n
+          ref: 9205108cfdced5177706264038848b68b2422d2b # craft-i18n.rev
+          path: craft-i18n
+      - name: Prune craft-i18n to zh-hans only
+        shell: pwsh
+        run: |
+          $Locales = Join-Path $env:GITHUB_WORKSPACE 'craft-i18n\locales'
+          Get-ChildItem $Locales -Directory |
+            Where-Object Name -ne 'zh-hans' |
+            Remove-Item -Recurse -Force
+          Get-ChildItem $Locales -Directory | Select-Object -ExpandProperty Name
+      - name: Build wordcraft.exe (win7 target)
+        shell: pwsh
+        env:
+          CRAFT_I18N_DIR: ${{ github.workspace }}\craft-i18n
+        run: ./packaging/windows/windows7.ps1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: wordcraft-windows7-zh-x64
+          path: target/x86_64-win7-windows-msvc/release/wordcraft.exe
+          if-no-files-found: error

@@ -1,29 +1,38 @@
 //! Desktop spooler adapter. Discovery and submission never run on the UI thread.
-#[cfg(any(windows, test))]
+#[cfg(all(any(windows, test), not(target_vendor = "win7")))]
 pub(crate) mod isolated;
 
-use wordcraft_ui_egui::printing::{Discover, Duplex, Printer, Settings, Submit};
+use wordcraft_ui_egui::printing::{Discover, Settings, Submit};
+#[cfg(not(target_vendor = "win7"))]
+use wordcraft_ui_egui::printing::{Duplex, Printer};
+
+/// The experimental Windows 7 build's spooler: the PDF viewer's print verb (docs/windows7.md).
+#[cfg(any(test, target_vendor = "win7"))]
+mod windows7;
 
 /// Returns a discovery callback that enumerates spooler printers on a named worker thread and
 /// sends the list through a channel, keeping spooler calls off the UI thread.
-///
-/// The Print panel needs only names and the default, so the list comes from
-/// `craft_print::printer_queues`, which asks no printer driver anything: on Windows a networked
-/// printer in power save can hold a driver's capability query for a long time, and the list must
-/// not wait on it (#5710). Submission still checks the job's options with the driver.
 pub fn discover() -> Discover {
     Box::new(|| {
         let (sender, receiver) = std::sync::mpsc::channel();
         let _ = std::thread::Builder::new().name("print-discovery".into()).spawn(move || {
-            let printers = craft_print::printer_queues()
-                .into_iter()
-                .map(|printer| Printer { name: printer.name, label: printer.description, default: printer.default })
-                .collect();
-            let _ = sender.send(printers);
+            let _ = sender.send(printers());
         });
         receiver
     })
 }
+
+/// The spooler's printers. The Print panel needs only names and the default, so the list comes
+/// from `craft_print::printer_queues`, which asks no printer driver anything: on Windows a
+/// networked printer in power save can hold a driver's capability query for a long time, and the
+/// list must not wait on it (#5710). Submission still checks the job's options with the driver.
+#[cfg(not(target_vendor = "win7"))]
+fn printers() -> Vec<Printer> {
+    craft_print::printer_queues().into_iter().map(|printer| Printer { name: printer.name, label: printer.description, default: printer.default }).collect()
+}
+
+#[cfg(target_vendor = "win7")]
+use windows7::printers;
 
 /// A submission worker and how to stop its job: `true` when it will never be sent, `false` when
 /// it was already being sent.
@@ -69,35 +78,66 @@ pub fn cancel() -> Box<dyn Fn() -> bool> {
     Box::new(|| jobs().last().is_none_or(|job| (job.cancel)()))
 }
 
+/// A no-op cancellation token: the Windows 7 build hands the job to the PDF viewer, whose print
+/// verb cannot be cancelled once started (docs/windows7.md).
+#[cfg(target_vendor = "win7")]
+#[derive(Clone)]
+struct NoCancel;
+
+#[cfg(target_vendor = "win7")]
+impl NoCancel {
+    fn new() -> Self {
+        Self
+    }
+
+    fn cancel(&self) -> bool {
+        false
+    }
+}
+
+/// Hands `bytes` to the PDF viewer, which prints with its own settings (docs/windows7.md).
+#[cfg(target_vendor = "win7")]
+fn send(bytes: &[u8], settings: Settings, _collate: bool, _options: Vec<(String, String)>) -> Result<String, String> {
+    windows7::submit(bytes, &settings.printer, settings.copies)
+}
+
 /// Submit off the UI thread, isolating Windows drivers while retaining CUPS token cancellation.
 pub fn submit() -> Submit {
     Box::new(|bytes, settings: Settings, collate, options| {
         let (sender, receiver) = std::sync::mpsc::channel();
         #[cfg(not(windows))]
         let cancel = craft_print::Cancel::new();
-        #[cfg(windows)]
+        #[cfg(all(windows, not(target_vendor = "win7")))]
         let cancel = isolated::Submission::new();
+        #[cfg(target_vendor = "win7")]
+        let cancel = NoCancel;
+        #[cfg(not(target_vendor = "win7"))]
         let token = cancel.clone();
         let worker = std::thread::Builder::new().name("print-submit".into()).spawn(move || {
-            let job = craft_print::Job {
-                printer: Some(settings.printer),
-                copies: settings.copies.clamp(1, 999),
-                collate,
-                duplex: settings.duplex.map(|value| match value {
-                    Duplex::LongEdge => craft_print::Duplex::LongEdge,
-                    Duplex::ShortEdge => craft_print::Duplex::ShortEdge,
-                    Duplex::Off => craft_print::Duplex::Off,
-                }),
-                grayscale: settings.grayscale,
-                scaling: craft_print::Scaling::ShrinkToFit,
-                title: "WordCraft document".into(),
-                options,
-            };
-            #[cfg(not(windows))]
-            let sent = craft_print::submit_cancellable(&bytes, &job, &mut |_, _| {}, &token).map_err(|error| error.to_string());
-            #[cfg(windows)]
-            let sent = token.submit(&bytes, &job);
-            let _ = sender.send(sent);
+            #[cfg(not(target_vendor = "win7"))]
+            {
+                let job = craft_print::Job {
+                    printer: Some(settings.printer),
+                    copies: settings.copies.clamp(1, 999),
+                    collate,
+                    duplex: settings.duplex.map(|value| match value {
+                        Duplex::LongEdge => craft_print::Duplex::LongEdge,
+                        Duplex::ShortEdge => craft_print::Duplex::ShortEdge,
+                        Duplex::Off => craft_print::Duplex::Off,
+                    }),
+                    grayscale: settings.grayscale,
+                    scaling: craft_print::Scaling::ShrinkToFit,
+                    title: "WordCraft document".into(),
+                    options,
+                };
+                #[cfg(not(windows))]
+                let sent = craft_print::submit_cancellable(&bytes, &job, &mut |_, _| {}, &token).map_err(|error| error.to_string());
+                #[cfg(windows)]
+                let sent = token.submit(&bytes, &job);
+                let _ = sender.send(sent);
+            }
+            #[cfg(target_vendor = "win7")]
+            let _ = sender.send(send(&bytes, settings, collate, options));
         });
         if let Ok(worker) = worker {
             let mut jobs = jobs();

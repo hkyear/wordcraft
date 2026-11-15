@@ -13,21 +13,7 @@ pub fn bundled() -> &'static [&'static [u8]] {
     BUNDLED
 }
 
-pub(super) static BUNDLED: &[&[u8]] = &[
-    include_bytes!("../../../../assets/fonts/SourceSans3-Regular.ttf"),
-    include_bytes!("../../../../assets/fonts/SourceSans3-Semibold.ttf"),
-    include_bytes!("../../../../assets/fonts/SourceSans3-Bold.ttf"),
-    include_bytes!("../../../../assets/fonts/SourceSans3-It.ttf"),
-    include_bytes!("../../../../assets/fonts/SourceSerif4-Regular.ttf"),
-    include_bytes!("../../../../assets/fonts/SourceSerif4-It.ttf"),
-    include_bytes!("../../../../assets/fonts/SourceSerif4-Semibold.ttf"),
-    include_bytes!("../../../../assets/fonts/SourceSerif4-Bold.ttf"),
-    include_bytes!("../../../../assets/fonts/SourceSerif4-BoldIt.ttf"),
-    include_bytes!("../../../../assets/fonts/Inter-Regular.ttf"),
-    include_bytes!("../../../../assets/fonts/Inter-Medium.ttf"),
-    include_bytes!("../../../../assets/fonts/Inter-SemiBold.ttf"),
-    include_bytes!("../../../../assets/fonts/JetBrainsMono-Regular.ttf"),
-];
+pub(super) static BUNDLED: &[&[u8]] = &[];
 
 #[derive(Clone)]
 pub(super) enum FontBytes {
