@@ -1,5 +1,5 @@
 <# Experimental, unsupported Windows 7 SP1 x64 build (docs/windows7.md), ported from VectorCraft's.
-   Build on Windows 10/11 with the VS 2022 x64 C++ tools and Windows SDK.
+   Build on Windows 10/11 with the VS 2022 x86 C++ tools and Windows SDK.
    From the repository root: powershell -File packaging/windows/windows7.ps1 [-Test]
    The resulting portable ZIP targets Windows 7 SP1 x64 with an OpenGL 3.3 driver.
    The compiler runs on the build host, not on Windows 7. -Test also runs the app and CLI tests
@@ -7,7 +7,7 @@
 param([string] $Toolchain = 'nightly-2026-10-01', [switch] $Test)
 $ErrorActionPreference = 'Stop'
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-$Target = 'x86_64-win7-windows-msvc'
+$Target = 'i686-win7-windows-msvc'
 function Invoke-Checked([scriptblock] $Command) {
   & $Command
   if ($LASTEXITCODE -ne 0) { throw "Command failed with exit code $LASTEXITCODE" }
@@ -18,7 +18,7 @@ function Get-LockWithoutWindowsLinkSource([string] $Text) {
   ($Text -replace "`r`n", "`n") -replace '(?m)^(name = "windows-link"\nversion = "[^"]*"\n)source = "[^"]*"\nchecksum = "[^"]*"\n', '$1'
 }
 Push-Location $Root
-$FlagName = 'CARGO_TARGET_X86_64_WIN7_WINDOWS_MSVC_RUSTFLAGS'
+$FlagName = 'CARGO_TARGET_I686_WIN7_WINDOWS_MSVC_RUSTFLAGS'
 $OldFlags = [Environment]::GetEnvironmentVariable($FlagName)
 $OldWinres = $env:WORDCRAFT_REQUIRE_WINRES
 $Lock = Join-Path $Root 'Cargo.lock'
@@ -54,7 +54,7 @@ try {
     $Exe = Join-Path $Bin $Name
     $Bytes = [IO.File]::ReadAllBytes($Exe)
     $Pe = [BitConverter]::ToInt32($Bytes, 0x3c)
-    if ([BitConverter]::ToUInt16($Bytes, $Pe + 4) -ne 0x8664) { throw "$Name is not x64" }
+    if ([BitConverter]::ToUInt16($Bytes, $Pe + 4) -ne 0x14c) { throw "$Name is not x86 (32-bit)" }
     $Major = [BitConverter]::ToUInt16($Bytes, $Pe + 0x48)
     $Minor = [BitConverter]::ToUInt16($Bytes, $Pe + 0x4a)
     if ($Major -gt 6 -or ($Major -eq 6 -and $Minor -gt 1)) { throw "$Name requires subsystem $Major.$Minor" }
