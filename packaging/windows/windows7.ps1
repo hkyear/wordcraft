@@ -35,21 +35,21 @@ try {
   $After = Get-LockWithoutWindowsLinkSource ([IO.File]::ReadAllText($Lock))
   if ($Before -cne $After) { throw 'Cargo.lock is out of date: applying the windows-link patch changed other entries' }
   $CargoArgs = @('--locked') + $Patch + @('--target', $Target, '--no-default-features', '--features', 'wordcraft/windows7')
-  $Tree = cargo "+$Toolchain" tree @CargoArgs -p wordcraft -p wordcraft-cli -e normal --prefix none
+  $Tree = cargo "+$Toolchain" tree @CargoArgs -p wordcraft -e normal --prefix none
   if ($LASTEXITCODE -ne 0) { throw 'dependency inspection failed' }
   # craft-print draws jobs with Windows.Data.Pdf (Windows Runtime): src/print/windows7.rs replaces it.
   if ($Tree -match '^(wgpu|wgpu-core|wgpu-hal|accesskit_windows|craft-print|winprint) v') { throw 'unsupported Windows backend in compatibility build' }
   if (-not ($Tree -match '^windows-link v[^ ]+ \(.*vendor[\\/]windows-link\)')) { throw 'the patched windows-link is not in use' }
   # The ordinary pc-windows-msvc standard library requires Windows 10. Rebuild std for win7.
-  [Environment]::SetEnvironmentVariable($FlagName, '-C target-feature=+crt-static')
+  [Environment]::SetEnvironmentVariable($FlagName, '-C target-feature=+crt-static -C target-cpu=sandybridge')
   $env:WORDCRAFT_REQUIRE_WINRES = '1'
   if (-not $env:WORDCRAFT_BUILD_SHA) { $env:WORDCRAFT_BUILD_SHA = (git -C $Root rev-parse HEAD 2>$null) }
-  $CargoArgs += @('-p', 'wordcraft', '-p', 'wordcraft-cli')
+  $CargoArgs += @('-p', 'wordcraft')
   Invoke-Checked { cargo "+$Toolchain" build -Z build-std=std,panic_unwind @CargoArgs --release }
   $TargetDir = if ($env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR } else { 'target' }
   $Bin = Join-Path $TargetDir "$Target\release"
   # PE subsystem: 2 = Windows GUI (the app opens no console), 3 = console (the CLI's output reaches it).
-  foreach ($Check in @(@('wordcraft.exe', 2), @('wordcraft-cli.exe', 3))) {
+  foreach ($Check in @(@('wordcraft.exe', 2))) {
     $Name = $Check[0]
     $Exe = Join-Path $Bin $Name
     $Bytes = [IO.File]::ReadAllBytes($Exe)
@@ -72,25 +72,6 @@ try {
       throw "$Name directly imports a known post-Windows-7 API: $(($Bad | ForEach-Object { $_.Trim() }) -join ', ')"
     }
   }
-  Invoke-Checked { & (Join-Path $Bin 'wordcraft-cli.exe') --version }
-  $Stage = Join-Path $TargetDir ('windows7-portable-' + [Guid]::NewGuid().ToString('N'))
-  New-Item -ItemType Directory -Force $Stage | Out-Null
-  Copy-Item (Join-Path $Bin 'wordcraft.exe'), (Join-Path $Bin 'wordcraft-cli.exe') $Stage
-  # The same notices as the regular portable zip (package.ps1), plus windows-link's licences.
-  Copy-Item README.md, LICENSE-MIT, LICENSE-APACHE, NOTICE, ATTRIBUTION.md $Stage
-  Copy-Item vendor/windows-link/license-mit (Join-Path $Stage 'LICENSE-windows-link-MIT')
-  Copy-Item vendor/windows-link/license-apache-2.0 (Join-Path $Stage 'LICENSE-windows-link-Apache-2.0')
-  Copy-Item docs/windows7.md (Join-Path $Stage 'WINDOWS7.md')
-  if ($env:CRAFT_FONTS_DIR) {
-    foreach ($ofl in Get-ChildItem (Join-Path $env:CRAFT_FONTS_DIR 'fonts\*\OFL.txt')) {
-      Copy-Item $ofl.FullName (Join-Path $Stage "OFL-$($ofl.Directory.Name).txt")
-    }
-  }
-  New-Item -ItemType Directory -Force dist/release | Out-Null
-  $Zip = Join-Path $Root 'dist/release/wordcraft-windows7-x64-portable.zip'
-  Compress-Archive -Path (Join-Path $Stage '*') -DestinationPath $Zip -Force
-  Remove-Item -Recurse -Force $Stage
-  Get-Item $Zip
   if ($Test) {
     # Exercises the Windows code paths on the build host only; it doesn't prove Windows 7 runtime support.
     Invoke-Checked { cargo "+$Toolchain" test -Z build-std=std,panic_unwind,test @CargoArgs }

@@ -144,9 +144,12 @@ debug = "line-tables-only"
 
 [profile.release]
 opt-level = 3
-lto = "thin"
-codegen-units = 16
+lto = "fat"
+codegen-units = 1
 debug = 0
+strip = true
+panic = "unwind"
+incremental = false
 
 # Required by craft-pdf: the backend rejects writers that failed during unwinding.
 [patch.crates-io]
