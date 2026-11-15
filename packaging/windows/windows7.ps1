@@ -41,7 +41,7 @@ try {
   if ($Tree -match '^(wgpu|wgpu-core|wgpu-hal|accesskit_windows|craft-print|winprint) v') { throw 'unsupported Windows backend in compatibility build' }
   if (-not ($Tree -match '^windows-link v[^ ]+ \(.*vendor[\\/]windows-link\)')) { throw 'the patched windows-link is not in use' }
   # The ordinary pc-windows-msvc standard library requires Windows 10. Rebuild std for win7.
-  [Environment]::SetEnvironmentVariable($FlagName, '-C target-feature=+crt-static -C target-cpu=sandybridge')
+  [Environment]::SetEnvironmentVariable($FlagName, '-C target-feature=+crt-static -C target-cpu=ivybridge')
   $env:WORDCRAFT_REQUIRE_WINRES = '1'
   if (-not $env:WORDCRAFT_BUILD_SHA) { $env:WORDCRAFT_BUILD_SHA = (git -C $Root rev-parse HEAD 2>$null) }
   $CargoArgs += @('-p', 'wordcraft')
