@@ -27,6 +27,7 @@ jobs:
           detached: true
           wait-timeout-minutes: 360
           limit-access-to-actor: true
+          allow-exec: true
 
       - name: Publish ssh command
         shell: bash
