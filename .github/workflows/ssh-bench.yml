@@ -1,125 +1,40 @@
-name: ssh-bench (manual only)
+name: ssh-bench (manual only surely)
 
-# Fork-local interactive debugging/benchmark session. Manual dispatch ONLY.
-# v6: diagnostic-hardened. tmate relay is dead (ssh.tmate.io shut down 2025-07,
-# tmate-io/tmate#322/#336), so we run key-locked sshd on 2222 + reverse tunnels
-# (bore.pub + pinggy). Everything diagnostic is published as a release asset so
-# we never depend on reading runner logs while the job runs. No step may die
-# before the upload (no bare printf with a leading '-' format; every diagnostic
-# command gets `|| true`).
+# Fork-local interactive session on a GitHub-hosted runner IC.
+# Manual dispatch ONLY. Uses upterm (actions/action-upterm wiki repair):
+#  - the session is keyed to the SSH keys of the account that dispatched the run
+#  - the runner is released when the upterm session ends (`--exit` / Ctrl-D), or on timeout
+#
+# Connect from your machine:
+#   ssh -t <SESSION_SSH_SERVER>
+# The exact command is in the artifact `ssh-command.txt`.
 
 on:
   workflow_dispatch: {}
 
 permissions:
-  contents: write
-
-env:
-  RELEASE_ID: '443436768'
-  BENCH_PUBKEY: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOI/nJInsDdHaWRiqbMZqZOVyXallUpjryRVvda4YDQM hkyear-gh-actions-bench'
+  contents: read
 
 jobs:
   bench:
     runs-on: ubuntu-latest
     timeout-minutes: 360
     steps:
-      - name: CPU info
-        run: |
-          lscpu | grep -E 'Model name|MHz|Core|Socket|Thread|NUMA node' || true
-          printf 'nproc=%s\n' "$(nproc)"
-          printf 'mem: '; free -h | awk 'NR==2{print $2" total / "$7" avail"}'
+      - name: Setup upterm session
+        id: upterm
+        uses: owenthereal/action-upterm@v2
+        with:
+          detached: true
+          wait-timeout-minutes: 360
+          limit-access-to-actor: true
 
-      - name: sshd + reverse tunnels (bore + pinggy)
-        run: |
-          set -e
-          # ---- sshd，锁到账号公钥 ----
-          mkdir -p ~/.ssh
-          printf '%s\n' "$BENCH_PUBKEY" > ~/.ssh/authorized_keys
-          chmod 700 ~/.ssh
-          chmod 600 ~/.ssh/authorized_keys
-          mkdir -p /tmp/bench_ssh
-          ssh-keygen -t ed25519 -N '' -f /tmp/bench_ssh/host_ed25519 -q
-          sudo mkdir -p /run/sshd
-          sudo usermod -p '*' runner   # runner account is locked in the image; sshd (UsePAM no) refuses locked accounts
-          cat > /tmp/sshd_config <<'EOF'
-          Port 2222
-          HostKey /tmp/bench_ssh/host_ed25519
-          PubkeyAuthentication yes
-          AuthorizedKeysFile /home/runner/.ssh/authorized_keys
-          PasswordAuthentication no
-          KbdInteractiveAuthentication no
-          UsePAM no
-          AllowUsers runner
-          PidFile /tmp/sshd_bench.pid
-          LogLevel VERBOSE
-          StrictModes yes
-          EOF
-          sudo chmod g-w /home/runner
-          sudo /usr/sbin/sshd -f /tmp/sshd_config -E /tmp/sshd.log || true
-          ss -tln | grep 2222 || true
-
-          # ---- 回环自测（失败不终止步骤） ----
-          st=FAIL
-          if ssh-keygen -t ed25519 -N '' -f /tmp/selftest_key -q \
-             && cat /tmp/selftest_key.pub >> ~/.ssh/authorized_keys \
-             && ssh -i /tmp/selftest_key -o StrictHostKeyChecking=no \
-                    -o UserKnownHostsFile=/dev/null -p 2222 runner@localhost true 2>/dev/null; then
-            st=PASS
-          fi
-          rm -f /tmp/selftest_key /tmp/selftest_key.pub
-          printf '%s\n' "$BENCH_PUBKEY" > ~/.ssh/authorized_keys
-          chmod 600 ~/.ssh/authorized_keys
-
-          # ---- bore.pub 隧道 ----
-          baddr=none
-          if curl -sfL -o /tmp/bore.tgz https://github.com/ekzhang/bore/releases/download/v0.5.0/bore-v0.5.0-x86_64-unknown-linux-musl.tar.gz; then
-            tar -xzf /tmp/bore.tgz -C /tmp && chmod +x /tmp/bore || true
-            nohup /tmp/bore local 2222 --to bore.pub > /tmp/bore.log 2>&1 &
-            sleep 4
-            baddr=$(grep -o 'bore.pub:[0-9]*' /tmp/bore.log | head -1 || printf none)
-          fi
-
-          # ---- pinggy 免费隧道（443 出口） ----
-          paddr=none
-          nohup ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=30 \
-            -p 443 -R0:localhost:2222 free.pinggy.io > /tmp/pinggy.log 2>&1 &
-          sleep 12
-          paddr=$(grep -oE 'tcp://[a-zA-Z0-9.]+:[0-9]+' /tmp/pinggy.log | head -1 || printf none)
-
-          # ---- 发布到 release 资产（诊断与地址一体） ----
-          {
-            printf 'utc=%s\n' "$(date -u +%FT%TZ)"
-            printf 'selftest=%s\n' "$st"
-            printf 'bore=%s\n' "$baddr"
-            printf 'pinggy=%s\n' "$paddr"
-            printf 'user=runner\n'
-            printf '%s\n' '=== ssh dir ==='
-            ls -la ~/.ssh 2>&1 || true
-            head -c 100 ~/.ssh/authorized_keys 2>&1 || true
-            printf '\n%s\n' '=== sshd effective config ==='
-            sudo /usr/sbin/sshd -T -f /tmp/sshd_config 2>&1 | grep -iE 'authorizedkeysfile|pubkeyauth|strictmodes|allowusers|passwordauth|kbdinteractive' || true
-            printf '%s\n' '=== sshd.log ==='
-            sudo tail -40 /tmp/sshd.log 2>&1 || true
-            printf '%s\n' '=== pinggy.log tail ==='
-            tail -8 /tmp/pinggy.log 2>&1 || true
-          } > bench_info.txt
-          cat bench_info.txt
-          ts=$(date +%s)
-          curl -sf -X POST \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Content-Type: text/plain" \
-            --data-binary @bench_info.txt \
-            "https://uploads.github.com/repos/hkyear/wordcraft/releases/$RELEASE_ID/assets?name=bench_info_$ts.txt" \
-            && printf 'published bench_info_%s.txt\n' "$ts"
+      - name: Publish ssh command
+        shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          SSH_COMMAND: ${{ steps.upterm.outputs.ssh-command }}
+        run: printf '%s\n' "$SSH_COMMAND" > ssh-command.txt
 
-      - name: Hold session open (until /continue or 6h)
-        run: |
-          printf 'SSH ready. From inside the session: sudo touch /continue to release the runner.\n'
-          i=0
-          until [ -f /continue ] || [ "$i" -ge 4320 ]; do
-            sleep 5
-            i=$((i+1))
-          done
-          printf 'Releasing runner.\n'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ssh-command
+          path: ssh-command.txt
