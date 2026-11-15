@@ -22,7 +22,7 @@ jobs:
     steps:
       - name: Setup upterm session
         id: upterm
-        uses: owenthereal/action-upterm@v2
+        uses: ./.github/actions/upterm-quiet
         with:
           detached: true
           wait-timeout-minutes: 360
