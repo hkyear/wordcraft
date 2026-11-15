@@ -49,7 +49,8 @@ try {
   $TargetDir = if ($env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR } else { 'target' }
   $Bin = Join-Path $TargetDir "$Target\release"
   # PE subsystem: 2 = Windows GUI (the app opens no console), 3 = console (the CLI's output reaches it).
-  foreach ($Check in @(@('wordcraft.exe', 2))) {
+  $Checks = ,@('wordcraft.exe', 2)  # comma operator: keep the pair nested (plain @() would flatten a single inner array)
+  foreach ($Check in $Checks) {
     $Name = $Check[0]
     $Exe = Join-Path $Bin $Name
     $Bytes = [IO.File]::ReadAllBytes($Exe)
