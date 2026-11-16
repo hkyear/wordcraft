@@ -1054,7 +1054,7 @@ source = "git+https://github.com/storytold/craft-libs?rev=41fb227542efb8a7748caa
 [[package]]
 name = "craft-doc-binary"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=41fb227542efb8a7748caa1c659f271d8605303c#41fb227542efb8a7748caa1c659f271d8605303c"
+source = "git+https://github.com/hkyear/craft-libs?rev=2c7b78e6c19acfdd67e38d92a6a2230e082fa739#2c7b78e6c19acfdd67e38d92a6a2230e082fa739"
 dependencies = [
  "chrono",
  "craft-cfb",
@@ -7427,6 +7427,8 @@ dependencies = [
  "unicode-linebreak",
  "unicode-segmentation",
  "wordcraft-doc",
+ "wordcraft-docbin",
+ "wordcraft-docx",
  "wordcraft-fonts",
  "wordcraft-geom",
 ]

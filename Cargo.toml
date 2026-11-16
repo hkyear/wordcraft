@@ -169,3 +169,9 @@ eframe = { git = "https://github.com/storytold/egui.git", rev = "6d518fc79968157
 egui_demo_lib = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 egui_inspection = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 winit = { git = "https://github.com/storytold/winit.git", rev = "a517b3846ee8457d84ee4975110bfda6797c44dc" }
+
+# Table fixes for the .doc (Word 97-2003) reader: nested-table assembly (port of
+# storytold/craft-libs#1469) + boundary-only tables keep their column widths.
+# Branch table-fixes (2c7b78e) on top of the pinned rev 41fb227542efb8a7748caa1c659f271d8605303c.
+[patch."https://github.com/storytold/craft-libs"]
+craft-doc-binary = { git = "https://github.com/hkyear/craft-libs", rev = "2c7b78e6c19acfdd67e38d92a6a2230e082fa739" }
