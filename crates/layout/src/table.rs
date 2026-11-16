@@ -394,8 +394,53 @@ fn preferred_grid(t: &Table, avail: f32) -> Vec<f32> {
     } else {
         vec![avail / ncols as f32; ncols]
     };
-    apply_cell_widths(t, &mut grid);
+    let base_target = match (t.props.width_pct, t.props.width) {
+        (Some(p), _) if p.is_finite() && p > 0.0 => avail * (p / 100.0).min(MAX_WIDTH_SHARE),
+        (_, Some(w)) if w.is_finite() && w > 0.0 => w,
+        _ => grid.iter().sum(),
+    };
+    apply_cell_widths_word(t, &mut grid, base_target);
     grid
+}
+
+/// Word-style cell widths: the first row's `tcW` states the intended column widths and is
+/// applied per-cell instead of vetoing the whole table on any mismatch (`tblGrid` keeps only
+/// a supporting role: it fills columns the first row leaves unspecified and provides the
+/// proportions inside cells that span several columns). `base_target` is the table's
+/// preferred width in points, used to resolve `pct` cells.
+fn apply_cell_widths_word(t: &Table, grid: &mut [f32], base_target: f32) {
+    let Some(first) = t.rows.first() else { return };
+    let mut col = 0usize;
+    for cell in &first.cells {
+        let span = cell.span().max(1) as usize;
+        if col + span > grid.len() {
+            return; // the row does not tile the grid; keep the snapshot untouched
+        }
+        let wpt = cell
+            .props
+            .width
+            .filter(|w| w.is_finite() && *w > 0.0)
+            .or_else(|| {
+                cell.props
+                    .width_pct
+                    .filter(|p| p.is_finite() && *p > 0.0)
+                    .map(|p| base_target * (p / 100.0).min(MAX_WIDTH_SHARE))
+            });
+        if let Some(w) = wpt {
+            if span == 1 {
+                grid[col] = w;
+            } else {
+                let sum: f32 = grid[col..col + span].iter().sum();
+                if sum > 0.0 {
+                    let k = w / sum;
+                    for g in &mut grid[col..col + span] {
+                        *g *= k;
+                    }
+                }
+            }
+        }
+        col += span;
+    }
 }
 
 fn table_frame(ctx: &mut Ctx, t: &Table, avail: f32, depth: usize, style: Option<&TableStyleProps>) -> TableFrame {
@@ -1515,6 +1560,7 @@ fn is_automatic(t: &Table) -> bool {
 
 /// Consistent cell widths replace a stale grid without changing the table's total width.
 /// Conflicting widths, spans and percentages need the full shared-grid algorithm.
+#[allow(dead_code)] // pre-Word-semantics veto gates, kept for diff reference
 fn apply_cell_widths(t: &Table, grid: &mut [f32]) {
     let Some(first) = t.rows.first() else { return };
     if first.cells.len() != grid.len() {
@@ -1578,6 +1624,60 @@ fn autofit(grid: &mut [f32], content: &[(f32, f32)], t: &Table, avail: f32) {
     for (w, c) in grid.iter_mut().zip(content) {
         *w = if *w < c.0 { c.0 } else { *w - (*w - c.0).min(share) };
     }
+}
+
+
+/// Diagnostic probe (scratch harness, not for upstream): runs the exact column-width
+/// pipeline of `table_frame` without a page `Ctx` (content measured via
+/// `measure_table_columns` instead of the ctx-bound `column_content`). Returns the grid
+/// after each stage: (preferred+cell widths, after table target scale, after autofit).
+pub fn resolve_columns_probe(t: &Table, measured: &[(f32, f32)], avail: f32) -> (Vec<f32>, Vec<f32>, Vec<f32>, bool) {
+    // rebuild preferred_grid inline to observe whether tcW actually replaced the snapshot
+    let ncols = grid_cols(t).max(1);
+    let mut grid: Vec<f32> = if t.grid.len() == ncols {
+        t.grid
+            .iter()
+            .map(|&w| match w {
+                w if !w.is_finite() => 72.0,
+                w if w <= 0.0 => 4.0,
+                w => w,
+            })
+            .collect()
+    } else {
+        vec![avail / ncols as f32; ncols]
+    };
+    let clean = grid.clone();
+    apply_cell_widths(t, &mut grid);
+    let tcw_accepted = grid != clean;
+    let preferred = grid.clone();
+    let total0: f32 = grid.iter().sum();
+    let target = match (t.props.width_pct, t.props.width) {
+        (Some(p), _) if p > 0.0 => Some(avail * (p / 100.0).min(MAX_WIDTH_SHARE)),
+        (_, Some(w)) if w > 0.0 => Some(w),
+        _ => None,
+    };
+    if let Some(tw) = target {
+        if total0 > 0.0 && total0 < 1.0 {
+            grid.iter_mut().for_each(|w| *w = (*w / total0) * tw);
+        } else {
+            let k = tw / total0.max(1.0);
+            grid.iter_mut().for_each(|w| *w *= k);
+        }
+    } else if total0 > avail * 1.5 && !t.props.fixed {
+        let k = avail / total0.max(1.0);
+        grid.iter_mut().for_each(|w| *w *= k);
+    }
+    let scaled = grid.clone();
+    let total = target.unwrap_or_else(|| scaled.iter().sum());
+    if !t.props.fixed {
+        autofit(&mut grid, measured, t, avail);
+        let fitted: f32 = grid.iter().sum();
+        let cap = avail.max(total);
+        if fitted > cap {
+            grid.iter_mut().for_each(|w| *w *= cap / fitted);
+        }
+    }
+    (preferred, scaled, grid, tcw_accepted)
 }
 
 #[cfg(test)]
