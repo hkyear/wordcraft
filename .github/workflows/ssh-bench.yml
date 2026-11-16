@@ -20,6 +20,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 360
     steps:
+      - uses: actions/checkout@v4   # the local composite action lives in the repo
+
       - name: Setup upterm session
         id: upterm
         uses: ./.github/actions/upterm-quiet
