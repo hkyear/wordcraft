@@ -1054,7 +1054,7 @@ source = "git+https://github.com/storytold/craft-libs?rev=41fb227542efb8a7748caa
 [[package]]
 name = "craft-doc-binary"
 version = "0.1.0"
-source = "git+https://github.com/hkyear/craft-libs?rev=2c7b78e6c19acfdd67e38d92a6a2230e082fa739#2c7b78e6c19acfdd67e38d92a6a2230e082fa739"
+source = "git+https://github.com/hkyear/craft-libs?rev=4703d6e69cf365f70bc5be560173f8c95f6ce06d#4703d6e69cf365f70bc5be560173f8c95f6ce06d"
 dependencies = [
  "chrono",
  "craft-cfb",
