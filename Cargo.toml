@@ -174,4 +174,4 @@ winit = { git = "https://github.com/storytold/winit.git", rev = "a517b3846ee8457
 # storytold/craft-libs#1469) + boundary-only tables keep their column widths.
 # Branch table-fixes (2c7b78e) on top of the pinned rev 41fb227542efb8a7748caa1c659f271d8605303c.
 [patch."https://github.com/storytold/craft-libs"]
-craft-doc-binary = { git = "https://github.com/hkyear/craft-libs", rev = "4703d6e69cf365f70bc5be560173f8c95f6ce06d" }
+craft-doc-binary = { git = "https://github.com/hkyear/craft-libs", rev = "df44cdbd44daf95db338899a6d54cc05c419cee7" }
