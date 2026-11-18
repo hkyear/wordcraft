@@ -1846,6 +1846,7 @@ dependencies = [
  "egui-wgpu",
  "egui-winit",
  "egui_glow",
+ "glow",
  "glutin",
  "glutin-winit",
  "image",
@@ -7547,6 +7548,8 @@ dependencies = [
  "unicode-linebreak",
  "unicode-segmentation",
  "wordcraft-doc",
+ "wordcraft-docbin",
+ "wordcraft-docx",
  "wordcraft-fonts",
  "wordcraft-geom",
 ]
