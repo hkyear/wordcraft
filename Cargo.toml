@@ -160,7 +160,7 @@ incremental = false
 
 # Required by craft-pdf: the backend rejects writers that failed during unwinding.
 [patch.crates-io]
-krilla = { git = "https://github.com/storytold/craft-libs", rev = "93dac78c93a7f1fd66e2022edeb089233b1dc45a" }
+krilla = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
 ecolor = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 emath = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 epaint = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
@@ -181,4 +181,48 @@ winit = { git = "https://github.com/storytold/winit.git", rev = "a517b3846ee8457
 # storytold/craft-libs#1469) + boundary-only tables keep their column widths.
 # Branch table-fixes (2c7b78e) on top of the pinned rev 41fb227542efb8a7748caa1c659f271d8605303c.
 [patch."https://github.com/storytold/craft-libs"]
+craft-atomic = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-cfb = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-codepage = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-dds = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-doc-binary = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-docx = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-drawingml = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-flow = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-font-catalog = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-font-store = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-fonts-build = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-html = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-i18n = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-image-codecs = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-jpeg = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-latex = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-markdown = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-math = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-mcp-server = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-metadata = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-metafile = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-mime = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-odf = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-ods = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-offcrypto = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-opc = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-pdf = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-print = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-proof = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-rtf = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-sheet = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-ssip = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-tiff = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-ui = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-update = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-web-api = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-web-host = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-window = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-wordmodel = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-xls = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-xlsx = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-xml = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+craft-zip = { git = "https://github.com/hkyear/craft-libs", rev = "531fd95d25cb2bca0cf38e7100729847a3de18db" }
+
 craft-doc-binary = { git = "https://github.com/hkyear/craft-libs", rev = "df44cdbd44daf95db338899a6d54cc05c419cee7" }
